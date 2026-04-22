@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Note, subscribeToNotes, createNote, deleteNote } from '@/services/firestoreService';
 import { runGroundedQA } from '@/services/geminiService';
 import { LoadingSpinner, ErrorMessage } from './common/Common';
-import { Plus, Trash2, MessageCircle, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, MessageCircle, ArrowLeft, Upload, FileText, Loader2 } from 'lucide-react';
 import Markdown from 'react-markdown';
+import { extractTextFromPDF } from '@/lib/pdfExtractor';
 
 export function LearnDashboard() {
   const { user, signInWithGoogle } = useAuth();
@@ -23,6 +24,9 @@ export function LearnDashboard() {
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [qaLoading, setQaLoading] = useState(false);
+  const [isExtractingPdf, setIsExtractingPdf] = useState(false);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!user) {
@@ -83,6 +87,25 @@ export function LearnDashboard() {
     setQaLoading(false);
   };
 
+  const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setIsExtractingPdf(true);
+    try {
+      const extractedText = await extractTextFromPDF(file);
+      setNewTitle(file.name.replace('.pdf', ''));
+      setNewContent(extractedText);
+    } catch (err) {
+      console.error("Failed to parse PDF:", err);
+      // Fallback or error state handling could be added here
+    }
+    setIsExtractingPdf(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''; // Reset input
+    }
+  };
+
   if (loading) return <LoadingSpinner />;
 
   if (selectedNote) {
@@ -136,6 +159,38 @@ export function LearnDashboard() {
           <h2 className="text-xl font-bold">Create New Note</h2>
           <button onClick={() => setIsCreating(false)} className="text-gray-500 hover:text-gray-700">Cancel</button>
         </div>
+        
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between">
+          <div className="flex items-center text-blue-800">
+            <FileText className="w-5 h-5 mr-3 text-blue-600" />
+            <div>
+              <p className="font-semibold text-sm">Upload PDF Document</p>
+              <p className="text-xs text-blue-600/80">Automatically extract text to create your note</p>
+            </div>
+          </div>
+          <input 
+            type="file" 
+            accept=".pdf" 
+            className="hidden" 
+            ref={fileInputRef}
+            onChange={handlePdfUpload}
+          />
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isExtractingPdf}
+            className="flex items-center gap-2 px-4 py-2 bg-white text-blue-700 text-sm font-semibold border border-blue-200 shadow-sm rounded-lg hover:bg-blue-100 disabled:opacity-50 transition-colors"
+          >
+            {isExtractingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            {isExtractingPdf ? 'Extracting...' : 'Upload PDF'}
+          </button>
+        </div>
+        
+        <div className="flex items-center gap-4 py-2">
+          <div className="flex-1 h-px bg-gray-200"></div>
+          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Or enter manually</span>
+          <div className="flex-1 h-px bg-gray-200"></div>
+        </div>
+
         <input
           value={newTitle}
           onChange={(e) => setNewTitle(e.target.value)}
