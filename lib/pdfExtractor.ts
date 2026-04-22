@@ -1,9 +1,20 @@
 export async function extractTextFromPDF(file: File): Promise<string> {
-  // Use dynamic import so pdfjs-dist isn't evaluated on the server
-  const pdfjsLib = await import('pdfjs-dist');
-  
-  // Configure the worker to be loaded from CDN since Webpack/Turbopack handles it clunkily by default
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+  // Load pdfjs-dist from CDN to avoid Next.js Webpack bundling issues 
+  // (which can cause "Object.defineProperty called on non-object" with modern ESM builds)
+  await new Promise<void>((resolve, reject) => {
+    if (typeof window !== 'undefined' && (window as any).pdfjsLib) {
+      resolve();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Failed to load pdf.js'));
+    document.head.appendChild(script);
+  });
+
+  const pdfjsLib = (window as any).pdfjsLib;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
   const arrayBuffer = await file.arrayBuffer();
   
