@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 
+// Initialize with the Next Public env var since we are running client side
 const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY });
 
 // 1. Grounded Q&A on notes
@@ -16,13 +17,13 @@ Question: ${question}
   
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: prompt,
     });
     return response.text || "No response generated.";
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error in runGroundedQA:", error);
-    return "Sorry, I encountered an error answering your question.";
+    return `Sorry, I encountered an error answering your question. ${error?.message || ''}`;
   }
 }
 
@@ -68,7 +69,7 @@ export async function analyzeInteractions(drugList: string[]): Promise<Interacti
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -81,9 +82,9 @@ export async function analyzeInteractions(drugList: string[]): Promise<Interacti
       rawResult = rawResult.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
     }
     return JSON.parse(rawResult);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error in analyzeInteractions:", error);
-    throw new Error("Failed to analyze text. Please ensure valid input.");
+    throw new Error(`Failed to analyze text. Ensure API Key is correct. Error: ${error?.message || ''}`);
   }
 }
 
@@ -108,7 +109,7 @@ export async function generateScenarioWithAI(): Promise<Scenario> {
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -120,9 +121,9 @@ export async function generateScenarioWithAI(): Promise<Scenario> {
       rawResult = rawResult.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
     }
     return JSON.parse(rawResult);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error in generateScenarioWithAI:", error);
-    throw new Error("Failed to generate scenario.");
+    throw new Error(`Failed to generate scenario: ${error?.message || 'Unknown error'}`);
   }
 }
 
@@ -148,13 +149,13 @@ export async function getSimulationResponse(scenario: Scenario, history: Simulat
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: promptParts.join('\\n'),
     });
     return response.text || "";
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error in getSimulationResponse:", error);
-    return "I'm not sure what you mean.";
+    return `[System: Encountered error reaching patient simulator: ${error?.message || 'Check API Key'}]`;
   }
 }
 
@@ -207,7 +208,7 @@ export async function getSimulationFeedback(scenario: Scenario, history: Simulat
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -219,9 +220,9 @@ export async function getSimulationFeedback(scenario: Scenario, history: Simulat
       rawResult = rawResult.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
     }
     return JSON.parse(rawResult);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error in getSimulationFeedback:", error);
-    throw new Error("Failed to generate feedback.");
+    throw new Error(`Failed to generate feedback: ${error?.message || ''}`);
   }
 }
 
