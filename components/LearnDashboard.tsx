@@ -93,20 +93,31 @@ export function LearnDashboard() {
     if (!selectedNote || !question.trim()) return;
     
     setQaLoading(true);
-    const newHistory: {role: 'user' | 'model', content: string}[] = [
-      ...chatHistory,
-      { role: 'user', content: question.trim() }
-    ];
-    setChatHistory(newHistory);
+    const userQ = question.trim();
     setQuestion('');
     
-    try {
-      const response = await runGroundedQA(selectedNote.content, newHistory);
-      setChatHistory([...newHistory, { role: 'model', content: response }]);
-    } catch (err) {
-      setChatHistory([...newHistory, { role: 'model', content: "Failed to get an answer." }]);
-    }
-    setQaLoading(false);
+    setChatHistory(prev => {
+      const newHistory: {role: 'user' | 'model', content: string}[] = [
+        ...prev,
+        { role: 'user', content: userQ }
+      ];
+      
+      // Need an IIFE to run async state inside the sync state setter wrapper, 
+      // passing the truly resolved recent history array
+      (async () => {
+        try {
+          const response = await runGroundedQA(selectedNote.content, newHistory);
+          setChatHistory(curr => [...curr, { role: 'model', content: response }]);
+        } catch (err: any) {
+          console.error("handleAskQuestion Error:", err);
+          setChatHistory(curr => [...curr, { role: 'model', content: `Failed to get an answer: ${err.message}` }]);
+        } finally {
+          setQaLoading(false);
+        }
+      })();
+      
+      return newHistory;
+    });
   };
 
   const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

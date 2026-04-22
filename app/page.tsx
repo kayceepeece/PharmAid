@@ -113,9 +113,15 @@ export default function Home() {
             </div>
          </div>
 
-        {activeTab === 'learn' && <LearnDashboard />}
-        {activeTab === 'clinical' && <ClinicalPage />}
-        {activeTab === 'simulate' && <SimulatePage />}
+        <div className={activeTab === 'learn' ? 'block' : 'hidden'}>
+          <LearnDashboard />
+        </div>
+        <div className={activeTab === 'clinical' ? 'block' : 'hidden'}>
+          <ClinicalPage />
+        </div>
+        <div className={activeTab === 'simulate' ? 'block' : 'hidden'}>
+          <SimulatePage />
+        </div>
       </main>
     </div>
   );

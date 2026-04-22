@@ -17,14 +17,21 @@ export async function runGroundedQA(noteContent: string, history: {role: 'user' 
   promptParts.push(`Tutor:`);
   
   try {
-    const response = await ai.models.generateContent({
+    const timeoutPromise = new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error("Request timed out after 30 seconds")), 30000)
+    );
+    
+    // We race the API call with a 30s timeout so the UI never permanently hangs
+    const responsePromise = ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: promptParts.join('\\n'),
+      contents: promptParts.join('\n'),
     });
+    
+    const response = await Promise.race([responsePromise, timeoutPromise]) as any;
     return response.text || "No response generated.";
   } catch (error: any) {
     console.error("Error in runGroundedQA:", error);
-    return `Sorry, I encountered an error answering your question. ${error?.message || ''}`;
+    return `*System: I'm sorry, I encountered an error answering your question. (${error?.message || 'Unknown'})*`;
   }
 }
 
@@ -149,10 +156,16 @@ export async function getSimulationResponse(scenario: Scenario, history: Simulat
   promptParts.push(`Respond as the Patient to the Pharmacist's last message. Do not include prefix like "Patient:". Just the dialogue.`);
 
   try {
-    const response = await ai.models.generateContent({
+    const timeoutPromise = new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error("Request timed out after 30 seconds")), 30000)
+    );
+
+    const responsePromise = ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: promptParts.join('\\n'),
+      contents: promptParts.join('\n'),
     });
+
+    const response = await Promise.race([responsePromise, timeoutPromise]) as any;
     return response.text || "";
   } catch (error: any) {
     console.error("Error in getSimulationResponse:", error);
