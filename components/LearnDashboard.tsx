@@ -29,12 +29,22 @@ export function LearnDashboard() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    // Always load local notes first
+    const storedLocal = localStorage.getItem('localNotes');
+    const localNotes: Note[] = storedLocal ? JSON.parse(storedLocal) : [];
+    
     if (!user) {
+      setNotes(localNotes);
       setLoading(false);
       return;
     }
+    
+    // If user is here, subscribe to remote notes and append any local ones
     const unsubscribe = subscribeToNotes(user.uid, (fetchedNotes) => {
-      setNotes(fetchedNotes);
+      // Ensure we don't duplicate by checking IDs, though they are stored in different places.
+      // Usually, if a user signs in, they'd want their local notes pushed or just to see both.
+      // We'll show local notes + remote notes.
+      setNotes([...localNotes, ...fetchedNotes]);
       setLoading(false);
     });
     return () => unsubscribe();
@@ -43,21 +53,11 @@ export function LearnDashboard() {
   const handleCreate = async () => {
     if (!newTitle || !newContent) return;
     
-    let targetUid = user?.uid;
-    if (!targetUid) {
-      try {
-        await signInWithGoogle();
-        const { auth } = await import('@/lib/firebase');
-        targetUid = auth.currentUser?.uid;
-      } catch (err) {
-        console.error("Sign in aborted or failed:", err);
-      }
-    }
-
-    if (targetUid) {
-      await createNote(targetUid, newTitle, newContent);
+    if (user?.uid) {
+      await createNote(user.uid, newTitle, newContent);
     } else {
-      // Create local ephemeral note for testing without saving
+      // Create local ephemeral note for testing without saving to cloud
+      // This will NOT trigger a Google Sign In blocker
       const newLocalNote: Note = {
         id: `local-${Date.now()}`,
         userId: 'guest',
@@ -66,7 +66,13 @@ export function LearnDashboard() {
         createdAt: new Date(),
         updatedAt: new Date()
       };
-      setNotes([newLocalNote, ...notes]);
+      
+      const storedLocal = localStorage.getItem('localNotes');
+      const existingLocalNotes = storedLocal ? JSON.parse(storedLocal) : [];
+      const updatedLocalNotes = [newLocalNote, ...existingLocalNotes];
+      localStorage.setItem('localNotes', JSON.stringify(updatedLocalNotes));
+      
+      setNotes(prev => [newLocalNote, ...prev]);
     }
     
     setNewTitle('');
@@ -160,6 +166,15 @@ export function LearnDashboard() {
           <button onClick={() => setIsCreating(false)} className="text-gray-500 hover:text-gray-700">Cancel</button>
         </div>
         
+        {!user && (
+          <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg mb-4 text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <p>You are not signed in. This note will be saved locally to this device.</p>
+            <button onClick={signInWithGoogle} className="bg-white px-3 py-1.5 rounded-md border border-yellow-300 font-medium hover:bg-yellow-100 whitespace-nowrap">
+              Sign in to Sync
+            </button>
+          </div>
+        )}
+
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between">
           <div className="flex items-center text-blue-800">
             <FileText className="w-5 h-5 mr-3 text-blue-600" />
@@ -241,6 +256,13 @@ export function LearnDashboard() {
                   onClick={(e) => { 
                     e.stopPropagation(); 
                     if (note.id.startsWith('local-')) {
+                      // Delete from local storage
+                      const storedLocal = localStorage.getItem('localNotes');
+                      if (storedLocal) {
+                        const existingLocalNotes: Note[] = JSON.parse(storedLocal);
+                        const updatedLocalNotes = existingLocalNotes.filter(n => n.id !== note.id);
+                        localStorage.setItem('localNotes', JSON.stringify(updatedLocalNotes));
+                      }
                       setNotes(notes.filter(n => n.id !== note.id));
                     } else {
                       deleteNote(note.id); 
