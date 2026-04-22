@@ -22,12 +22,20 @@ export function LearnDashboard() {
   
   // QA State
   const [question, setQuestion] = useState('');
-  const [answer, setAnswer] = useState('');
+  const [chatHistory, setChatHistory] = useState<{role: 'user' | 'model', content: string}[]>([]);
   const [qaLoading, setQaLoading] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isExtractingPdf, setIsExtractingPdf] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Scroll to bottom of chat when it updates
+  useEffect(() => {
+    if (isChatOpen && chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatHistory, isChatOpen, qaLoading]);
 
   useEffect(() => {
     // Always load local notes first
@@ -82,14 +90,21 @@ export function LearnDashboard() {
   };
 
   const handleAskQuestion = async () => {
-    if (!selectedNote || !question) return;
+    if (!selectedNote || !question.trim()) return;
+    
     setQaLoading(true);
-    setAnswer('');
+    const newHistory: {role: 'user' | 'model', content: string}[] = [
+      ...chatHistory,
+      { role: 'user', content: question.trim() }
+    ];
+    setChatHistory(newHistory);
+    setQuestion('');
+    
     try {
-      const response = await runGroundedQA(selectedNote.content, question);
-      setAnswer(response);
+      const response = await runGroundedQA(selectedNote.content, newHistory);
+      setChatHistory([...newHistory, { role: 'model', content: response }]);
     } catch (err) {
-      setAnswer("Failed to get an answer.");
+      setChatHistory([...newHistory, { role: 'model', content: "Failed to get an answer." }]);
     }
     setQaLoading(false);
   };
@@ -118,7 +133,7 @@ export function LearnDashboard() {
   if (selectedNote) {
     return (
       <div className="space-y-6">
-        <button onClick={() => { setSelectedNote(null); setAnswer(''); setQuestion(''); }} className="flex items-center text-blue-600 hover:text-blue-800">
+        <button onClick={() => { setSelectedNote(null); setChatHistory([]); setQuestion(''); }} className="flex items-center text-blue-600 hover:text-blue-800">
           <ArrowLeft className="w-4 h-4 mr-1" /> Back to Notes
         </button>
         <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
@@ -132,8 +147,8 @@ export function LearnDashboard() {
         <div className="fixed bottom-6 right-6 flex flex-col items-end z-50">
           {/* Chat Window - conditionally rendered */}
           {isChatOpen ? (
-            <div className="bg-white rounded-lg shadow-xl border border-blue-200 w-80 sm:w-96 mb-4 overflow-hidden flex flex-col transition-all duration-300 transform origin-bottom-right">
-              <div className="bg-blue-600 p-3 text-white flex justify-between items-center">
+            <div className="bg-white rounded-lg shadow-xl border border-blue-200 w-80 sm:w-96 h-[500px] mb-4 overflow-hidden flex flex-col transition-all duration-300 transform origin-bottom-right">
+              <div className="bg-blue-600 p-3 text-white flex justify-between items-center z-10 shadow-sm">
                 <h3 className="font-semibold flex items-center text-sm">
                   <MessageCircle className="w-4 h-4 mr-2" /> Ask AI
                 </h3>
@@ -146,37 +161,49 @@ export function LearnDashboard() {
                 </button>
               </div>
               
-              <div className="p-4 flex-1 max-h-96 overflow-y-auto bg-blue-50/30">
-                {answer ? (
-                  <div className="text-sm text-gray-800 markdown-body prose-sm">
-                    <Markdown>{answer}</Markdown>
-                  </div>
-                ) : qaLoading ? (
-                  <div className="flex items-center justify-center h-20 text-blue-600">
-                    <Loader2 className="w-6 h-6 animate-spin mr-2" />
-                    <span className="text-sm font-medium">Thinking...</span>
+              <div className="p-4 flex-1 overflow-y-auto bg-gray-50 flex flex-col space-y-4">
+                {chatHistory.length === 0 ? (
+                  <div className="text-sm text-gray-500 text-center italic mt-auto mb-auto">
+                    Ask a question about this note to get started. Follow up questions are supported!
                   </div>
                 ) : (
-                  <div className="text-sm text-gray-500 text-center italic mt-10">
-                    Ask a question about this note to get started.
+                  chatHistory.map((msg, idx) => (
+                     <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[85%] p-3 text-sm shadow-sm leading-relaxed ${
+                          msg.role === 'user' 
+                            ? 'bg-blue-600 text-white rounded-tl-xl rounded-bl-xl rounded-br-xl' 
+                            : 'bg-white border border-[#DEE2E6] text-gray-800 rounded-tr-xl rounded-br-xl rounded-bl-xl markdown-body prose-sm font-sans'
+                        }`}>
+                          {msg.role === 'model' ? <Markdown>{msg.content}</Markdown> : msg.content}
+                        </div>
+                     </div>
+                  ))
+                )}
+                {qaLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-white border border-[#DEE2E6] text-gray-600 rounded-tr-xl rounded-br-xl rounded-bl-xl p-3 shadow-sm text-sm flex items-center">
+                      <Loader2 className="w-4 h-4 animate-spin mr-2 text-blue-600" />
+                      Thinking...
+                    </div>
                   </div>
                 )}
+                <div ref={chatEndRef} />
               </div>
               
-              <div className="p-3 bg-white border-t border-gray-100 flex gap-2">
+              <div className="p-3 bg-white border-t border-gray-200 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] flex gap-2">
                 <input 
                   id="ai-chat-input"
                   type="text" 
                   value={question}
                   onChange={(e) => setQuestion(e.target.value)}
                   placeholder="Ask about this note..."
-                  className="flex-1 p-2 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+                  className="flex-1 p-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                   onKeyDown={(e) => e.key === 'Enter' && handleAskQuestion()}
                   autoFocus
                 />
                 <button 
                   onClick={handleAskQuestion}
-                  disabled={qaLoading || !question}
+                  disabled={qaLoading || !question.trim()}
                   className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
                   aria-label="Send question"
                 >

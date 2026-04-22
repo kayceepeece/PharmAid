@@ -4,21 +4,22 @@ import { GoogleGenAI } from '@google/genai';
 const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY });
 
 // 1. Grounded Q&A on notes
-export async function runGroundedQA(noteContent: string, question: string): Promise<string> {
-  const prompt = `You are an expert pharmacy tutor. Using ONLY the provided context below, answer the question. If the answer cannot be found in the context, state "I cannot answer this question based on the provided context."
-
-Context:
----
-${noteContent}
----
-
-Question: ${question}
-`;
+export async function runGroundedQA(noteContent: string, history: {role: 'user' | 'model', content: string}[]): Promise<string> {
+  const promptParts = [
+    `You are an expert pharmacy tutor. Using ONLY the provided clinical note below, answer the student's questions. If the answer cannot be found in the note, explicitly state that you cannot answer it based on the context.\n\nNOTE CONTENT:\n---\n${noteContent}\n---\n`,
+  ];
+  
+  for (const msg of history) {
+    promptParts.push(`${msg.role === 'user' ? 'Student' : 'Tutor'}: ${msg.content}`);
+  }
+  
+  // Model should continue as 'Tutor'
+  promptParts.push(`Tutor:`);
   
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: prompt,
+      contents: promptParts.join('\\n'),
     });
     return response.text || "No response generated.";
   } catch (error: any) {
