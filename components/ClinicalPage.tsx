@@ -1,15 +1,34 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { analyzeInteractions, InteractionAnalysisResults } from '@/services/geminiService';
-import { AlertCircle, FileSearch, ShieldAlert } from 'lucide-react';
+import { AlertCircle, FileSearch, ShieldAlert, Clock } from 'lucide-react';
 import { ErrorMessage, LoadingSpinner } from './common/Common';
+
+interface ClinicalHistoryItem {
+  id: string;
+  timestamp: number;
+  drugsInput: string;
+  results: InteractionAnalysisResults;
+}
 
 export function ClinicalPage() {
   const [drugsInput, setDrugsInput] = useState('');
   const [results, setResults] = useState<InteractionAnalysisResults | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [history, setHistory] = useState<ClinicalHistoryItem[]>([]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('clinicalHistory');
+    if (saved) {
+      try {
+        setHistory(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to parse clinical history", e);
+      }
+    }
+  }, []);
 
   const handleAnalyze = async () => {
     const drugs = drugsInput.split(',').map(d => d.trim()).filter(d => d.length > 0);
@@ -22,10 +41,27 @@ export function ClinicalPage() {
     try {
       const data = await analyzeInteractions(drugs);
       setResults(data);
+      
+      const newItem: ClinicalHistoryItem = {
+        id: Date.now().toString(),
+        timestamp: Date.now(),
+        drugsInput: drugs.join(', '),
+        results: data
+      };
+      const updatedHistory = [newItem, ...history].slice(0, 20); // keep last 20
+      setHistory(updatedHistory);
+      localStorage.setItem('clinicalHistory', JSON.stringify(updatedHistory));
+      
     } catch (err: any) {
       setError(err.message || "An error occurred during analysis.");
     }
     setLoading(false);
+  };
+
+  const loadHistoryItem = (item: ClinicalHistoryItem) => {
+    setDrugsInput(item.drugsInput);
+    setResults(item.results);
+    setError('');
   };
 
   const getRiskBadgeColor = (risk: string) => {
@@ -84,10 +120,33 @@ export function ClinicalPage() {
           <button
             onClick={handleAnalyze}
             disabled={loading || !drugsInput}
-            className="w-full mt-auto py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
+            className="w-full mt-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
           >
             {loading ? 'ANALYZING...' : 'ANALYZE INTERACTIONS'}
           </button>
+          
+          {history.length > 0 && (
+            <div className="mt-8 pt-6 border-t border-[#DEE2E6] flex-1 overflow-y-auto">
+              <h3 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-gray-500" /> Recent Analyses
+              </h3>
+              <div className="space-y-2">
+                {history.map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => loadHistoryItem(item)}
+                    className="w-full text-left p-3 rounded-lg border border-gray-100 hover:border-blue-200 hover:bg-blue-50 transition-colors bg-gray-50"
+                  >
+                    <p className="text-sm font-semibold text-gray-900 truncate">{item.drugsInput}</p>
+                    <p className="text-xs text-gray-500 mt-1 flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${item.results.overallRiskLevel === 'Very High' ? 'bg-red-500' : item.results.overallRiskLevel === 'High' ? 'bg-orange-500' : item.results.overallRiskLevel === 'Moderate' ? 'bg-yellow-500' : 'bg-green-500'}`}></span>
+                      Risk: {item.results.overallRiskLevel}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

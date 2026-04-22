@@ -2,8 +2,16 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { generateScenarioWithAI, getSimulationResponse, getSimulationFeedback, Scenario, SimulateChatMessage, FeedbackResponse } from '@/services/geminiService';
-import { Play, Send, User, Bot, RefreshCw, Ear, Star, Heart, Award, Shield, CheckCircle, Flag } from 'lucide-react';
+import { Play, Send, RefreshCw, Ear, Star, Heart, Award, Shield, CheckCircle, Flag, Clock, ArrowLeft } from 'lucide-react';
 import { ErrorMessage } from './common/Common';
+
+interface SimulationHistoryItem {
+  id: string;
+  timestamp: number;
+  scenario: Scenario;
+  messages: SimulateChatMessage[];
+  feedback: FeedbackResponse | null;
+}
 
 export function SimulatePage() {
   const [scenario, setScenario] = useState<Scenario | null>(null);
@@ -14,7 +22,39 @@ export function SimulatePage() {
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState<FeedbackResponse | null>(null);
   const [isEnding, setIsEnding] = useState(false);
+  const [history, setHistory] = useState<SimulationHistoryItem[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('simulateHistory');
+    if (saved) {
+      try {
+        setHistory(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to parse simulate history", e);
+      }
+    }
+  }, []);
+
+  const saveToHistory = (s: Scenario, m: SimulateChatMessage[], f: FeedbackResponse | null) => {
+    const newItem: SimulationHistoryItem = {
+      id: s.title + Date.now().toString(),
+      timestamp: Date.now(),
+      scenario: s,
+      messages: m,
+      feedback: f
+    };
+    const updatedHistory = [newItem, ...history].slice(0, 15); // keep last 15
+    setHistory(updatedHistory);
+    localStorage.setItem('simulateHistory', JSON.stringify(updatedHistory));
+  };
+
+  const loadHistoryItem = (item: SimulationHistoryItem) => {
+    setScenario(item.scenario);
+    setMessages(item.messages);
+    setFeedback(item.feedback);
+    setError('');
+  };
 
   const renderIcon = (name: string) => {
     switch (name) {
@@ -43,9 +83,11 @@ export function SimulatePage() {
     try {
       const newScenario = await generateScenarioWithAI();
       setScenario(newScenario);
-      setMessages([
+      const initialMessages: SimulateChatMessage[] = [
         { role: 'model', content: newScenario.initialMessageFromPatient }
-      ]);
+      ];
+      setMessages(initialMessages);
+      saveToHistory(newScenario, initialMessages, null);
     } catch (err: any) {
       setError(err.message || 'Failed to generate scenario.');
     }
@@ -59,6 +101,7 @@ export function SimulatePage() {
     try {
       const result = await getSimulationFeedback(scenario, messages);
       setFeedback(result);
+      saveToHistory(scenario, messages, result);
     } catch (err: any) {
       setError(err.message || 'Failed to generate feedback.');
     }
@@ -76,9 +119,13 @@ export function SimulatePage() {
 
     try {
       const patientResponse = await getSimulationResponse(scenario, newHistory);
-      setMessages([...newHistory, { role: 'model', content: patientResponse }]);
+      const finalHistory = [...newHistory, { role: 'model', content: patientResponse } as SimulateChatMessage];
+      setMessages(finalHistory);
+      saveToHistory(scenario, finalHistory, feedback);
     } catch (err) {
-      setMessages([...newHistory, { role: 'model', content: "*The patient stares blankly. There seems to be an error connecting to them.*" }]);
+      const errHistory = [...newHistory, { role: 'model', content: "*The patient stares blankly. There seems to be an error connecting to them.*" } as SimulateChatMessage];
+      setMessages(errHistory);
+      saveToHistory(scenario, errHistory, feedback);
     }
     setChatLoading(false);
   };
@@ -105,6 +152,33 @@ export function SimulatePage() {
           )}
           {loadingConfig ? 'GENERATING SCENARIO...' : 'START NEW SIMULATION'}
         </button>
+
+        {history.length > 0 && (
+          <div className="mt-12 w-full max-w-4xl text-left bg-white p-6 rounded-xl border border-[#DEE2E6] shadow-sm">
+             <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2 mb-4 border-b pb-3">
+               <Clock className="w-4 h-4 text-gray-400" /> Recent Sessions
+             </h3>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {history.map(item => (
+                  <button
+                     key={item.id}
+                     onClick={() => loadHistoryItem(item)}
+                     className="text-left rounded-lg p-4 border border-gray-100 bg-gray-50 hover:bg-blue-50 hover:border-blue-200 transition-colors"
+                  >
+                     <h4 className="font-bold text-gray-900 truncate">{item.scenario.title}</h4>
+                     <p className="text-xs text-gray-500 mt-1 flex items-center justify-between">
+                       <span>{new Date(item.timestamp).toLocaleDateString()}</span>
+                       {item.feedback ? (
+                         <span className="text-emerald-600 font-semibold text-xs py-0.5 px-2 bg-emerald-50 rounded">Score: {item.feedback.score}</span>
+                       ) : (
+                         <span className="text-blue-600 font-semibold text-xs py-0.5 px-2 bg-blue-50 rounded">In Progress...</span>
+                       )}
+                     </p>
+                  </button>
+                ))}
+             </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -112,34 +186,36 @@ export function SimulatePage() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-8rem)] min-h-[600px]">
       {/* Scenario Context Sidebar */}
-      <div className="col-span-1 lg:col-span-4 bg-white p-6 rounded-xl shadow-sm border border-[#DEE2E6] flex flex-col overflow-y-auto">
-        <div className="flex justify-between items-center mb-6 pb-4 border-b border-[#DEE2E6]">
-          <h2 className="text-lg font-bold flex items-center gap-2">Scenario Brief</h2>
-          <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Simulate</span>
-        </div>
-        
-        <div className="space-y-6 flex-1">
-          <div>
-            <h4 className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">Title</h4>
-            <p className="text-gray-900 font-bold text-lg">{scenario.title}</p>
+      <div className="col-span-1 lg:col-span-4 flex flex-col gap-6 h-full">
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-[#DEE2E6] flex flex-col">
+          <div className="flex justify-between items-center mb-6 pb-4 border-b border-[#DEE2E6]">
+            <h2 className="text-lg font-bold flex items-center gap-2">Scenario Brief</h2>
+            <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Simulate</span>
           </div>
-          <div>
-            <h4 className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">Description</h4>
-            <p className="text-gray-700 text-sm leading-relaxed">{scenario.description}</p>
+          
+          <div className="space-y-6 flex-1">
+            <div>
+              <h4 className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">Title</h4>
+              <p className="text-gray-900 font-bold text-lg">{scenario.title}</p>
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">Description</h4>
+              <p className="text-gray-700 text-sm leading-relaxed">{scenario.description}</p>
+            </div>
+            <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+              <h4 className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-2">Patient Profile</h4>
+              <p className="text-blue-900 text-sm leading-relaxed">{scenario.patientProfile}</p>
+            </div>
           </div>
-          <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
-            <h4 className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-2">Patient Profile</h4>
-            <p className="text-blue-900 text-sm leading-relaxed">{scenario.patientProfile}</p>
-          </div>
-        </div>
 
-        <button 
-          onClick={handleGenerateScenario}
-          className="mt-6 w-full py-2.5 border border-[#DEE2E6] text-gray-700 text-sm font-bold rounded-lg hover:bg-gray-50 flex justify-center items-center gap-2 transition-colors"
-        >
-          <RefreshCw className={`w-4 h-4 ${loadingConfig ? 'animate-spin' : ''}`} /> 
-          NEW SCENARIO
-        </button>
+          <button 
+            onClick={() => { setScenario(null); setMessages([]); setFeedback(null); }}
+            className="mt-6 w-full py-2.5 border border-blue-200 text-blue-700 bg-blue-50 text-sm font-bold rounded-lg hover:bg-blue-100 flex justify-center items-center gap-2 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" /> 
+            BACK TO MENU
+          </button>
+        </div>
       </div>
 
       {/* Chat Interface / Feedback Area */}

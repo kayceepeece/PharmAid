@@ -24,6 +24,7 @@ export function LearnDashboard() {
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [qaLoading, setQaLoading] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
   const [isExtractingPdf, setIsExtractingPdf] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -127,31 +128,73 @@ export function LearnDashboard() {
           </div>
         </div>
 
-        <div className="bg-blue-50 p-6 rounded-lg border border-blue-100">
-          <h3 className="text-lg font-semibold text-blue-900 flex items-center mb-4">
-            <MessageCircle className="w-5 h-5 mr-2" /> Ask AI about this note
-          </h3>
-          <div className="flex gap-2 mb-4">
-            <input 
-              type="text" 
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              placeholder="e.g. What are the key interactions mentioned?"
-              className="flex-1 p-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
-              onKeyDown={(e) => e.key === 'Enter' && handleAskQuestion()}
-            />
-            <button 
-              onClick={handleAskQuestion}
-              disabled={qaLoading || !question}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-            >
-              {qaLoading ? 'Thinking...' : 'Ask'}
-            </button>
-          </div>
-          {answer && (
-            <div className="mt-4 p-4 bg-white rounded border border-blue-200 text-gray-800 markdown-body">
-              <Markdown>{answer}</Markdown>
+        {/* AI Floating Action Button & Chat Window */}
+        <div className="fixed bottom-6 right-6 flex flex-col items-end z-50">
+          {/* Chat Window - conditionally rendered */}
+          {isChatOpen ? (
+            <div className="bg-white rounded-lg shadow-xl border border-blue-200 w-80 sm:w-96 mb-4 overflow-hidden flex flex-col transition-all duration-300 transform origin-bottom-right">
+              <div className="bg-blue-600 p-3 text-white flex justify-between items-center">
+                <h3 className="font-semibold flex items-center text-sm">
+                  <MessageCircle className="w-4 h-4 mr-2" /> Ask AI
+                </h3>
+                <button 
+                  onClick={() => setIsChatOpen(false)}
+                  className="text-blue-100 hover:text-white"
+                >
+                  <span className="sr-only">Close</span>
+                  &times;
+                </button>
+              </div>
+              
+              <div className="p-4 flex-1 max-h-96 overflow-y-auto bg-blue-50/30">
+                {answer ? (
+                  <div className="text-sm text-gray-800 markdown-body prose-sm">
+                    <Markdown>{answer}</Markdown>
+                  </div>
+                ) : qaLoading ? (
+                  <div className="flex items-center justify-center h-20 text-blue-600">
+                    <Loader2 className="w-6 h-6 animate-spin mr-2" />
+                    <span className="text-sm font-medium">Thinking...</span>
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-500 text-center italic mt-10">
+                    Ask a question about this note to get started.
+                  </div>
+                )}
+              </div>
+              
+              <div className="p-3 bg-white border-t border-gray-100 flex gap-2">
+                <input 
+                  id="ai-chat-input"
+                  type="text" 
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  placeholder="Ask about this note..."
+                  className="flex-1 p-2 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+                  onKeyDown={(e) => e.key === 'Enter' && handleAskQuestion()}
+                  autoFocus
+                />
+                <button 
+                  onClick={handleAskQuestion}
+                  disabled={qaLoading || !question}
+                  className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                  aria-label="Send question"
+                >
+                  <ArrowLeft className="w-4 h-4 rotate-180" />
+                </button>
+              </div>
             </div>
+          ) : null}
+
+          {/* FAB */}
+          {!isChatOpen && (
+            <button 
+              onClick={() => setIsChatOpen(true)}
+              className="w-14 h-14 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-full shadow-lg hover:shadow-xl flex items-center justify-center hover:scale-105 transition-transform"
+              aria-label="Ask AI"
+            >
+              <MessageCircle className="w-6 h-6" />
+            </button>
           )}
         </div>
       </div>
